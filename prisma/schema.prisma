@@ -1,0 +1,393 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  industry  String?
+  size      String?
+  country   String?
+  website   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  departments        Department[]
+  employees          Employee[]
+  checklistTemplates ChecklistTemplate[]
+  reviewCycles       ReviewCycle[]
+  okrPeriods         OkrPeriod[]
+  okrs              Okr[]
+  pips              Pip[]
+  employeeChecklists EmployeeChecklist[]
+  successionPlans   SuccessionPlan[]
+
+  @@index([id])
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String
+  role               Role      @default(EMPLOYEE)
+  mustChangePassword Boolean   @default(true)
+  isActive           Boolean   @default(true)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  employee          Employee?
+  reviewSubmissions ReviewSubmission[]
+  createdPips       Pip[]              @relation("PipCreator")
+
+  @@index([email])
+  @@index([organizationId])
+}
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  HR
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  employees Employee[]
+
+  @@unique([name, organizationId])
+  @@index([organizationId])
+}
+
+model Employee {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  firstName   String
+  lastName    String
+  email       String    @unique
+  phone       String?
+  gender      String?
+  dateOfBirth DateTime?
+  address     String?
+
+  jobTitle     String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  managerId     String?
+  manager       Employee?  @relation("ManagerReports", fields: [managerId], references: [id])
+  directReports Employee[] @relation("ManagerReports")
+
+  employmentType EmploymentType
+  workLocation   String?
+  startDate      DateTime
+  endDate        DateTime?
+  status         EmployeeStatus @default(ACTIVE)
+  avatar         String?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  checklists EmployeeChecklist[] @relation("EmployeeChecklists")
+  okrs       Okr[]               @relation("OkrOwner")
+  reviewedIn ReviewSubmission[]  @relation("Reviewee")
+  reviewedOkrs Okr[]             @relation("Reviewer")
+  pips       Pip[]
+  successionPlans SuccessionPlan[]
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([managerId])
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  OFFBOARDED
+}
+
+model ChecklistTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  type      ChecklistType?
+  items     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  employeeChecklists EmployeeChecklist[]
+
+  @@index([organizationId])
+}
+
+enum ChecklistType {
+  ONBOARDING
+  OFFBOARDING
+}
+
+model EmployeeChecklist {
+  id        String          @id @default(uuid())
+  type      ChecklistType
+  status    ChecklistStatus @default(PENDING)
+  progress  Int             @default(0)
+  items     Json
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  employeeId String
+  employee   Employee @relation("EmployeeChecklists", fields: [employeeId], references: [id])
+
+  templateId String?
+  template   ChecklistTemplate? @relation(fields: [templateId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([employeeId])
+  @@index([organizationId])
+  @@index([templateId])
+}
+
+enum ChecklistStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model ReviewCycle {
+  id     String            @id @default(uuid())
+  name   String
+  type   ReviewType
+  status ReviewCycleStatus @default(DRAFT)
+
+  startDate             DateTime
+  endDate               DateTime
+  selfReviewDeadline    DateTime
+  peerReviewDeadline    DateTime?
+  managerReviewDeadline DateTime?
+  shareBackDate         DateTime?
+
+  reviewerTypes String[]
+  anonymousPeer Boolean     @default(false)
+  scope         ReviewScope @default(WHOLE_COMPANY)
+  scopeDetails  String?
+  questions     Json
+  participants  String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  submissions ReviewSubmission[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum ReviewType {
+  ANNUAL
+  QUARTERLY
+  MID_YEAR
+  PROBATION
+  PEER
+  UPWARD
+  THREE_SIXTY
+}
+
+enum ReviewCycleStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CLOSED
+  PAUSED
+}
+
+enum ReviewScope {
+  WHOLE_COMPANY
+  SPECIFIC_DEPARTMENTS
+  INDIVIDUAL_EMPLOYEES
+}
+
+model ReviewSubmission {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cycleId String
+  cycle   ReviewCycle @relation(fields: [cycleId], references: [id])
+
+  reviewerId String
+  reviewer   User   @relation(fields: [reviewerId], references: [id])
+
+  revieweeId String
+  reviewee   Employee @relation("Reviewee", fields: [revieweeId], references: [id])
+
+  status      ReviewSubmissionStatus @default(PENDING)
+  answers     Json
+  submittedAt DateTime?
+
+  @@unique([cycleId, reviewerId, revieweeId])
+  @@index([cycleId])
+  @@index([reviewerId])
+  @@index([revieweeId])
+}
+
+enum ReviewSubmissionStatus {
+  PENDING
+  IN_PROGRESS
+  SUBMITTED
+}
+
+model OkrPeriod {
+  id          String       @id @default(uuid())
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  status      PeriodStatus @default(INACTIVE)
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  okrs Okr[]
+
+  @@index([organizationId])
+}
+
+enum PeriodStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Okr {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  objective  String
+  teamName   String?
+  type       OkrType
+  status     OkrStatus @default(DRAFT)
+  isGraded   Boolean @default(false)
+  isGradeApproved Boolean @default(false)
+  keyResults Json
+
+  ownerId String
+  owner   Employee @relation("OkrOwner", fields: [ownerId], references: [id])
+
+  reviewerId String?
+  reviewer   Employee?   @relation("Reviewer", fields: [reviewerId], references: [id])
+
+  alignedToId String?
+  alignedTo   Okr?    @relation("OkrAlignment", fields: [alignedToId], references: [id])
+  alignedOkrs Okr[]   @relation("OkrAlignment")
+
+  periodId String
+  period   OkrPeriod @relation(fields: [periodId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([ownerId])
+  @@index([reviewerId])
+  @@index([periodId])
+  @@index([organizationId])
+}
+
+enum OkrType {
+  COMPANY
+  TEAM
+  INDIVIDUAL
+}
+
+enum OkrStatus {
+  DRAFT
+  PENDING_APPROVAL
+  IN_PROGRESS
+  DONE
+}
+
+model Pip {
+  id        String    @id @default(uuid())
+  status    PipStatus @default(PENDING_APPROVAL)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("PipCreator", fields: [createdById], references: [id])
+
+  startDate DateTime
+  endDate   DateTime
+  reason    String
+  items     Json
+  notes     Json
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([employeeId])
+  @@index([createdById])
+  @@index([organizationId])
+}
+
+model SuccessionPlan {
+  id        String   @id @default(uuid())
+  roleTitle String
+  notes     String?
+  riskIndicators Json
+  successors Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  currentHolderId String
+  currentHolder   Employee @relation(fields: [currentHolderId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([currentHolderId])
+  @@index([organizationId])
+}
+
+enum PipStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  COMPLETED
+  REJECTED
+}
