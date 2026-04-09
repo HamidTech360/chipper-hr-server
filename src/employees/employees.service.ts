@@ -263,17 +263,26 @@ export class EmployeesService {
   async update(id: string, updateEmpDto: UpdateEmployeeDto) {
     const employee = await this.prisma.employee.findUnique({
       where: { id },
+      include: { user: true },
     });
 
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
 
-    const data: any = { ...updateEmpDto };
+    const { role, ...empDto } = updateEmpDto;
+    const data: any = { ...empDto };
 
     if (updateEmpDto.dateOfBirth) data.dateOfBirth = new Date(updateEmpDto.dateOfBirth);
     if (updateEmpDto.startDate) data.startDate = new Date(updateEmpDto.startDate);
     if (updateEmpDto.endDate) data.endDate = new Date(updateEmpDto.endDate);
+
+    if (role) {
+      await this.prisma.user.update({
+        where: { id: employee.userId },
+        data: { role },
+      });
+    }
 
     return this.prisma.employee.update({
       where: { id },

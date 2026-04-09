@@ -14,6 +14,8 @@ import { PipsModule } from './pips/pips.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { EmailModule } from './email/email.module';
 import { SuccessionModule } from './succession/succession.module';
+import { LeaveRequestsModule } from './leave-requests/leave-requests.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { SuccessionModule } from './succession/succession.module';
     DashboardModule,
     EmailModule,
     SuccessionModule,
+    LeaveRequestsModule,
+    SettingsModule,
   ],
 })
 export class AppModule {}

@@ -21,12 +21,13 @@ model Organization {
   departments        Department[]
   employees          Employee[]
   checklistTemplates ChecklistTemplate[]
-  reviewCycles       ReviewCycle[]
-  okrPeriods         OkrPeriod[]
+  reviews            Review[]
+  okrPeriods        OkrPeriod[]
   okrs              Okr[]
   pips              Pip[]
   employeeChecklists EmployeeChecklist[]
   successionPlans   SuccessionPlan[]
+  leaveRequests      LeaveRequest[]
 
   @@index([id])
 }
@@ -46,7 +47,6 @@ model User {
   organization   Organization @relation(fields: [organizationId], references: [id])
 
   employee          Employee?
-  reviewSubmissions ReviewSubmission[]
   createdPips       Pip[]              @relation("PipCreator")
 
   @@index([email])
@@ -110,10 +110,12 @@ model Employee {
 
   checklists EmployeeChecklist[] @relation("EmployeeChecklists")
   okrs       Okr[]               @relation("OkrOwner")
+  reviewSubmissions ReviewSubmission[] @relation("Reviewer")
   reviewedIn ReviewSubmission[]  @relation("Reviewee")
   reviewedOkrs Okr[]             @relation("Reviewer")
   pips       Pip[]
   successionPlans SuccessionPlan[]
+  leaveRequests LeaveRequest[]
 
   @@index([organizationId])
   @@index([departmentId])
@@ -182,28 +184,18 @@ enum ChecklistStatus {
   COMPLETED
 }
 
-model ReviewCycle {
-  id     String            @id @default(uuid())
-  name   String
-  type   ReviewType
-  status ReviewCycleStatus @default(DRAFT)
-
-  startDate             DateTime
-  endDate               DateTime
-  selfReviewDeadline    DateTime
-  peerReviewDeadline    DateTime?
-  managerReviewDeadline DateTime?
-  shareBackDate         DateTime?
-
-  reviewerTypes String[]
-  anonymousPeer Boolean     @default(false)
-  scope         ReviewScope @default(WHOLE_COMPANY)
-  scopeDetails  String?
-  questions     Json
-  participants  String[]
-
+model Review {
+  id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  name       String
+  type       ReviewType
+  status     ReviewStatus @default(DRAFT)
+  questions  Json
+  scope      ReviewScope @default(WHOLE_COMPANY)
+  scopeDetails String[]
+  dueDate    DateTime?
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -224,12 +216,11 @@ enum ReviewType {
   THREE_SIXTY
 }
 
-enum ReviewCycleStatus {
+enum ReviewStatus {
   DRAFT
   ACTIVE
   COMPLETED
   CLOSED
-  PAUSED
 }
 
 enum ReviewScope {
@@ -243,11 +234,11 @@ model ReviewSubmission {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  cycleId String
-  cycle   ReviewCycle @relation(fields: [cycleId], references: [id])
+  reviewId String
+  review   Review @relation(fields: [reviewId], references: [id])
 
   reviewerId String
-  reviewer   User   @relation(fields: [reviewerId], references: [id])
+  reviewer   Employee @relation("Reviewer", fields: [reviewerId], references: [id])
 
   revieweeId String
   reviewee   Employee @relation("Reviewee", fields: [revieweeId], references: [id])
@@ -256,8 +247,8 @@ model ReviewSubmission {
   answers     Json
   submittedAt DateTime?
 
-  @@unique([cycleId, reviewerId, revieweeId])
-  @@index([cycleId])
+  @@unique([reviewId, reviewerId, revieweeId])
+  @@index([reviewId])
   @@index([reviewerId])
   @@index([revieweeId])
 }
@@ -383,6 +374,37 @@ model SuccessionPlan {
 
   @@index([currentHolderId])
   @@index([organizationId])
+}
+
+model LeaveRequest {
+  id        String   @id @default(uuid())
+  status    LeaveStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  leaveType    String
+  startDate    DateTime
+  endDate      DateTime
+  reason       String
+  approvedById String?
+  approvedAt   DateTime?
+  notes        String?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([employeeId])
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum PipStatus {

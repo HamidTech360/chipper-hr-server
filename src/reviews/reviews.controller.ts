@@ -5,12 +5,12 @@ import {
   Put,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
-import { CreateCycleDto } from './dto/create-cycle.dto';
-import { UpdateCycleDto } from './dto/update-cycle.dto';
-import { SubmitReviewDto } from './dto/submit-review.dto';
+import { CreateReviewDto } from './dto/create-review.dto';
+import { CreateReviewParticipantsDto } from './dto/create-review-participants.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -22,71 +22,46 @@ import { Role } from '@prisma/client';
 export class ReviewsController {
   constructor(private reviewsService: ReviewsService) {}
 
-  @Post('cycles')
+  @Post()
   @UseGuards(RolesGuard)
   @Roles(Role.HR)
-  async createCycle(@Body() createDto: CreateCycleDto) {
-    const cycle = await this.reviewsService.createCycle(createDto);
-    await this.reviewsService.createReviewTasks(cycle.id);
-    return cycle;
-  }
-
-  @Get('cycles')
-  @UseGuards(RolesGuard)
-  @Roles(Role.HR)
-  async findAllCycles(@CurrentUser('organizationId') orgId: string) {
-    return this.reviewsService.findAllCycles(orgId);
-  }
-
-  @Get('cycles/:id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.HR)
-  async findCycleById(@Param('id') id: string) {
-    return this.reviewsService.findCycleById(id);
-  }
-
-  @Put('cycles/:id')
-  @UseGuards(RolesGuard)
-  @Roles(Role.HR)
-  async updateCycle(
-    @Param('id') id: string,
-    @Body() updateDto: UpdateCycleDto,
-  ) {
-    return this.reviewsService.updateCycle(id, updateDto);
-  }
-
-  @Put('cycles/:id/activate')
-  @UseGuards(RolesGuard)
-  @Roles(Role.HR)
-  async activateCycle(@Param('id') id: string) {
-    return this.reviewsService.activateCycle(id);
-  }
-
-  @Put('cycles/:id/pause')
-  @UseGuards(RolesGuard)
-  @Roles(Role.HR)
-  async pauseCycle(@Param('id') id: string) {
-    return this.reviewsService.pauseCycle(id);
-  }
-
-  @Put('cycles/:id/close')
-  @UseGuards(RolesGuard)
-  @Roles(Role.HR)
-  async closeCycle(@Param('id') id: string) {
-    return this.reviewsService.closeCycle(id);
-  }
-
-  @Get('tasks')
-  async getMyTasks(
-    @CurrentUser('userId') userId: string,
+  async createReview(
     @CurrentUser('organizationId') orgId: string,
+    @Body() createDto: CreateReviewDto,
   ) {
-    return this.reviewsService.getMyTasks(userId, orgId);
+    return this.reviewsService.createReview(createDto, orgId);
+  }
+
+  @Get()
+  @UseGuards(RolesGuard)
+  @Roles(Role.HR)
+  async findAllReviews(@CurrentUser('organizationId') orgId: string) {
+    return this.reviewsService.findAllReviews(orgId);
+  }
+
+  @Get('submissions')
+  @UseGuards(RolesGuard)
+  @Roles(Role.HR)
+  async getAllSubmissions(@CurrentUser('organizationId') orgId: string) {
+    return this.reviewsService.getAllSubmissions(orgId);
+  }
+
+  @Get('my-tasks')
+  async getMyTasks(@CurrentUser('userId') userId: string) {
+    return this.reviewsService.getMyTasks(userId);
   }
 
   @Get('submissions/:id')
   async getSubmissionById(@Param('id') id: string) {
     return this.reviewsService.getSubmissionById(id);
+  }
+
+  @Get('my-submissions/:id')
+  async getMySubmissionById(
+    @Param('id') id: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.reviewsService.getMySubmissionById(id, userId);
   }
 
   @Put('submissions/:id')
@@ -103,5 +78,33 @@ export class ReviewsController {
     @Body() body: { answers: Record<string, any> },
   ) {
     return this.reviewsService.submitReview(id, body.answers);
+  }
+
+  @Post('participants')
+  @UseGuards(RolesGuard)
+  @Roles(Role.HR)
+  async addParticipants(@Body() createDto: CreateReviewParticipantsDto) {
+    return this.reviewsService.addParticipants(createDto.reviewId, createDto.participants);
+  }
+
+  @Put(':id/activate')
+  @UseGuards(RolesGuard)
+  @Roles(Role.HR)
+  async activateReview(@Param('id') id: string) {
+    return this.reviewsService.activateReview(id);
+  }
+
+  @Put(':id/close')
+  @UseGuards(RolesGuard)
+  @Roles(Role.HR)
+  async closeReview(@Param('id') id: string) {
+    return this.reviewsService.closeReview(id);
+  }
+
+  @Put(':id/deactivate')
+  @UseGuards(RolesGuard)
+  @Roles(Role.HR)
+  async deactivateReview(@Param('id') id: string) {
+    return this.reviewsService.deactivateReview(id);
   }
 }

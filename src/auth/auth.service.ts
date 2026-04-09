@@ -59,6 +59,14 @@ export class AuthService {
   }
 
   async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
+    if (!changePasswordDto?.currentPassword || !changePasswordDto?.newPassword) {
+      throw new BadRequestException('Current password and new password are required');
+    }
+
+    if (changePasswordDto.newPassword.length < 8) {
+      throw new BadRequestException('New password must be at least 8 characters');
+    }
+
     const user = await this.usersService.findById(userId);
 
     if (!user) {
@@ -77,15 +85,24 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
     
     await this.usersService.updatePassword(userId, hashedPassword);
+    await this.usersService.setMustChangePassword(userId, false);
 
     return { message: 'Password changed successfully' };
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    if (!resetPasswordDto.userId || !resetPasswordDto.newPassword) {
+      throw new BadRequestException('User ID and new password are required');
+    }
+
     const user = await this.usersService.findById(resetPasswordDto.userId);
 
     if (!user) {
       throw new BadRequestException('User not found');
+    }
+
+    if (resetPasswordDto.newPassword.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters');
     }
 
     const hashedPassword = await bcrypt.hash(resetPasswordDto.newPassword, 10);

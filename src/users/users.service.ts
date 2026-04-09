@@ -14,6 +14,7 @@ export class UsersService {
         id: true,
         email: true,
         role: true,
+        passwordHash: true,
         mustChangePassword: true,
         isActive: true,
         organizationId: true,

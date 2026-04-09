@@ -19,7 +19,7 @@ export class DashboardService {
       this.prisma.employee.count({ where: { organizationId, status: 'ACTIVE' } }),
       this.prisma.employee.count({ where: { organizationId, status: 'ON_LEAVE' } }),
       this.prisma.department.count({ where: { organizationId } }),
-      this.prisma.reviewCycle.count({
+      this.prisma.review.count({
         where: { organizationId, status: 'ACTIVE' },
       }),
       this.prisma.okrPeriod.count({

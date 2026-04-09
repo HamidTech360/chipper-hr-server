@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ReviewType, ReviewCycleStatus, ReviewScope, ReviewSubmissionStatus, Role } from '@prisma/client';
-import { CreateCycleDto } from './dto/create-cycle.dto';
-import { UpdateCycleDto } from './dto/update-cycle.dto';
+import { ReviewStatus, ReviewSubmissionStatus } from '@prisma/client';
+import { CreateReviewDto } from './dto/create-review.dto';
 
 function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -12,191 +11,73 @@ function generateId(): string {
 export class ReviewsService {
   constructor(private prisma: PrismaService) {}
 
-  async createCycle(createDto: CreateCycleDto) {
-    const questions = createDto.questions.map((q) => ({
-      id: q.id || generateId(),
+  async createReview(createDto: CreateReviewDto, organizationId: string) {
+    const questions = (createDto.questions || []).map((q) => ({
+      id: generateId(),
       text: q.text,
-      type: q.type,
-      required: q.required,
+      type: q.type || 'open_text',
+      required: q.required ?? false,
       options: q.options || [],
     }));
 
-    return this.prisma.reviewCycle.create({
+    return this.prisma.review.create({
       data: {
         name: createDto.name,
         type: createDto.type,
-        startDate: new Date(createDto.startDate),
-        endDate: new Date(createDto.endDate),
-        selfReviewDeadline: new Date(createDto.selfReviewDeadline),
-        peerReviewDeadline: createDto.peerReviewDeadline ? new Date(createDto.peerReviewDeadline) : undefined,
-        managerReviewDeadline: createDto.managerReviewDeadline ? new Date(createDto.managerReviewDeadline) : undefined,
-        shareBackDate: createDto.shareBackDate ? new Date(createDto.shareBackDate) : undefined,
-        reviewerTypes: createDto.reviewerTypes,
-        anonymousPeer: createDto.anonymousPeer ?? false,
-        scope: createDto.scope || ReviewScope.WHOLE_COMPANY,
-        scopeDetails: createDto.scopeDetails,
+        scope: createDto.scope || 'WHOLE_COMPANY',
+        scopeDetails: createDto.scopeDetails || [],
+        dueDate: createDto.dueDate ? new Date(createDto.dueDate) : null,
         questions: questions as any,
-        participants: createDto.participantIds,
-        organizationId: createDto.organizationId,
-        status: ReviewCycleStatus.DRAFT,
+        organizationId,
+        status: ReviewStatus.DRAFT,
       },
     });
   }
 
-  async findAllCycles(organizationId: string) {
-    return this.prisma.reviewCycle.findMany({
+  async findAllReviews(organizationId: string) {
+    return this.prisma.review.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async findCycleById(id: string) {
-    const cycle = await this.prisma.reviewCycle.findUnique({
-      where: { id },
       include: {
-        submissions: {
-          include: {
-            reviewer: {
-              select: {
-                id: true,
-                email: true,
-                employee: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    avatar: true,
-                  },
-                },
-              },
-            },
-            reviewee: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                avatar: true,
-                jobTitle: true,
-              },
-            },
-          },
+        _count: {
+          select: { submissions: true },
         },
       },
     });
-
-    if (!cycle) {
-      throw new NotFoundException('Review cycle not found');
-    }
-
-    return cycle;
   }
 
-  async updateCycle(id: string, updateDto: UpdateCycleDto) {
-    const cycle = await this.prisma.reviewCycle.findUnique({
-      where: { id },
+  async getMyTasks(userId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { userId },
+      select: { id: true },
     });
 
-    if (!cycle) {
-      throw new NotFoundException('Review cycle not found');
+    if (!employee) {
+      return [];
     }
 
-    if (cycle.status !== ReviewCycleStatus.DRAFT) {
-      throw new BadRequestException('Can only update cycles in draft status');
-    }
-
-    const data: any = { ...updateDto };
-
-    if (updateDto.startDate) data.startDate = new Date(updateDto.startDate);
-    if (updateDto.endDate) data.endDate = new Date(updateDto.endDate);
-    if (updateDto.selfReviewDeadline) data.selfReviewDeadline = new Date(updateDto.selfReviewDeadline);
-    if (updateDto.peerReviewDeadline) data.peerReviewDeadline = new Date(updateDto.peerReviewDeadline);
-    if (updateDto.managerReviewDeadline) data.managerReviewDeadline = new Date(updateDto.managerReviewDeadline);
-    if (updateDto.shareBackDate) data.shareBackDate = new Date(updateDto.shareBackDate);
-    if (updateDto.questions) {
-      data.questions = updateDto.questions.map((q) => ({
-        id: q.id || generateId(),
-        text: q.text,
-        type: q.type,
-        required: q.required,
-        options: q.options || [],
-      })) as any;
-    }
-
-    return this.prisma.reviewCycle.update({
-      where: { id },
-      data,
-    });
-  }
-
-  async activateCycle(id: string) {
-    const cycle = await this.prisma.reviewCycle.findUnique({
-      where: { id },
-      include: { submissions: true },
-    });
-
-    if (!cycle) {
-      throw new NotFoundException('Review cycle not found');
-    }
-
-    if (cycle.status !== ReviewCycleStatus.DRAFT) {
-      throw new BadRequestException('Can only activate cycles in draft status');
-    }
-
-    if (cycle.submissions.length === 0) {
-      throw new BadRequestException('No review tasks created yet');
-    }
-
-    return this.prisma.reviewCycle.update({
-      where: { id },
-      data: { status: ReviewCycleStatus.ACTIVE },
-    });
-  }
-
-  async pauseCycle(id: string) {
-    const cycle = await this.prisma.reviewCycle.findUnique({
-      where: { id },
-    });
-
-    if (!cycle) {
-      throw new NotFoundException('Review cycle not found');
-    }
-
-    if (cycle.status !== ReviewCycleStatus.ACTIVE) {
-      throw new BadRequestException('Can only pause active cycles');
-    }
-
-    return this.prisma.reviewCycle.update({
-      where: { id },
-      data: { status: ReviewCycleStatus.PAUSED },
-    });
-  }
-
-  async closeCycle(id: string) {
-    const cycle = await this.prisma.reviewCycle.findUnique({
-      where: { id },
-    });
-
-    if (!cycle) {
-      throw new NotFoundException('Review cycle not found');
-    }
-
-    return this.prisma.reviewCycle.update({
-      where: { id },
-      data: { status: ReviewCycleStatus.CLOSED },
-    });
-  }
-
-  async getMyTasks(userId: string, organizationId: string) {
     const submissions = await this.prisma.reviewSubmission.findMany({
       where: {
-        reviewerId: userId,
-        cycle: { organizationId },
+        reviewerId: employee.id,
       },
-      include: {
-        cycle: {
+      select: {
+        id: true,
+        status: true,
+        reviewId: true,
+        reviewerId: true,
+        revieweeId: true,
+        answers: true,
+        submittedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        review: {
           select: {
             id: true,
             name: true,
+            type: true,
             status: true,
+            questions: true,
+            dueDate: true,
           },
         },
         reviewee: {
@@ -206,6 +87,62 @@ export class ReviewsService {
             lastName: true,
             avatar: true,
             jobTitle: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return submissions.map(sub => ({
+      ...sub,
+      dueDate: sub.review?.dueDate,
+    }));
+  }
+
+  async getAllSubmissions(organizationId: string) {
+    const submissions = await this.prisma.reviewSubmission.findMany({
+      where: {
+        review: {
+          organizationId,
+        },
+        status: ReviewSubmissionStatus.SUBMITTED,
+      },
+      select: {
+        id: true,
+        status: true,
+        reviewId: true,
+        reviewerId: true,
+        revieweeId: true,
+        answers: true,
+        submittedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        review: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+            questions: true,
+            dueDate: true,
+          },
+        },
+        reviewer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            avatar: true,
+          },
+        },
+        reviewee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            avatar: true,
           },
         },
       },
@@ -218,19 +155,33 @@ export class ReviewsService {
   async getSubmissionById(id: string) {
     const submission = await this.prisma.reviewSubmission.findUnique({
       where: { id },
-      include: {
-        cycle: true,
+      select: {
+        id: true,
+        status: true,
+        reviewId: true,
+        reviewerId: true,
+        revieweeId: true,
+        answers: true,
+        submittedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        review: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+            questions: true,
+            dueDate: true,
+          },
+        },
         reviewer: {
           select: {
             id: true,
-            email: true,
-            employee: {
-              select: {
-                firstName: true,
-                lastName: true,
-                avatar: true,
-              },
-            },
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            jobTitle: true,
           },
         },
         reviewee: {
@@ -240,6 +191,60 @@ export class ReviewsService {
             lastName: true,
             avatar: true,
             jobTitle: true,
+          },
+        },
+      },
+    });
+
+    if (!submission) {
+      throw new NotFoundException('Submission not found');
+    }
+
+    return submission;
+  }
+
+  async getMySubmissionById(id: string, userId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    const submission = await this.prisma.reviewSubmission.findFirst({
+      where: {
+        id,
+        reviewerId: employee.id,
+      },
+      select: {
+        id: true,
+        status: true,
+        reviewId: true,
+        reviewerId: true,
+        revieweeId: true,
+        answers: true,
+        submittedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        review: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+            questions: true,
+            dueDate: true,
+          },
+        },
+        reviewee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            avatar: true,
           },
         },
       },
@@ -286,64 +291,127 @@ export class ReviewsService {
         status: ReviewSubmissionStatus.SUBMITTED,
         submittedAt: new Date(),
       },
+      select: {
+        id: true,
+        status: true,
+        reviewId: true,
+        reviewerId: true,
+        revieweeId: true,
+        answers: true,
+        submittedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        review: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+            questions: true,
+            dueDate: true,
+          },
+        },
+        reviewer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            avatar: true,
+          },
+        },
+        reviewee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            avatar: true,
+          },
+        },
+      },
     });
   }
 
-  async createReviewTasks(cycleId: string) {
-    const cycle = await this.prisma.reviewCycle.findUnique({
-      where: { id: cycleId },
+  async addParticipants(reviewId: string, participants: { revieweeId: string; reviewerId: string }[]) {
+    const review = await this.prisma.review.findUnique({
+      where: { id: reviewId },
     });
 
-    if (!cycle) {
-      throw new NotFoundException('Review cycle not found');
+    if (!review) {
+      throw new NotFoundException('Review not found');
     }
 
-    const participants = cycle.participants;
-    const submissions: any[] = [];
-
-    for (const participantId of participants) {
-      const employee = await this.prisma.employee.findFirst({
-        where: { userId: participantId },
-      });
-
-      if (!employee) continue;
-
-      if (cycle.reviewerTypes.includes('Self')) {
-        submissions.push({
-          id: generateId(),
-          cycleId,
-          reviewerId: participantId,
-          revieweeId: employee.id,
-          status: ReviewSubmissionStatus.PENDING,
-          answers: [],
-        });
-      }
-
-      if (cycle.reviewerTypes.includes('Manager') && employee.managerId) {
-        const managerUser = await this.prisma.employee.findUnique({
-          where: { id: employee.managerId },
-          include: { user: true },
-        });
-
-        if (managerUser?.user) {
-          submissions.push({
-            id: generateId(),
-            cycleId,
-            reviewerId: managerUser.user.id,
-            revieweeId: employee.id,
-            status: ReviewSubmissionStatus.PENDING,
-            answers: [],
-          });
-        }
-      }
-    }
+    const submissions = participants.map(p => ({
+      id: generateId(),
+      reviewId,
+      reviewerId: p.reviewerId,
+      revieweeId: p.revieweeId,
+      status: ReviewSubmissionStatus.PENDING,
+      answers: {} as any,
+    }));
 
     if (submissions.length > 0) {
       await this.prisma.reviewSubmission.createMany({
         data: submissions,
+        skipDuplicates: true,
       });
     }
 
     return { created: submissions.length };
+  }
+
+  async activateReview(id: string) {
+    const review = await this.prisma.review.findUnique({
+      where: { id },
+      include: { submissions: true },
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found');
+    }
+
+    if (review.status !== ReviewStatus.DRAFT) {
+      throw new BadRequestException('Can only activate reviews in draft status');
+    }
+
+    return this.prisma.review.update({
+      where: { id },
+      data: { status: ReviewStatus.ACTIVE },
+    });
+  }
+
+  async closeReview(id: string) {
+    const review = await this.prisma.review.findUnique({
+      where: { id },
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found');
+    }
+
+    return this.prisma.review.update({
+      where: { id },
+      data: { status: ReviewStatus.CLOSED },
+    });
+  }
+
+  async deactivateReview(id: string) {
+    const review = await this.prisma.review.findUnique({
+      where: { id },
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review not found');
+    }
+
+    if (review.status !== ReviewStatus.ACTIVE) {
+      throw new BadRequestException('Can only deactivate reviews that are active');
+    }
+
+    return this.prisma.review.update({
+      where: { id },
+      data: { status: ReviewStatus.DRAFT },
+    });
   }
 }

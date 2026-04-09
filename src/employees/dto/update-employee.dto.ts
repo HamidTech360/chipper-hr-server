@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsDateString, IsEnum } from 'class-validator';
+import { Role } from '@prisma/client';
 
 export class UpdateEmployeeDto {
   @IsString()
@@ -56,4 +57,8 @@ export class UpdateEmployeeDto {
   @IsDateString()
   @IsOptional()
   endDate?: string;
+
+  @IsEnum(Role)
+  @IsOptional()
+  role?: Role;
 }
