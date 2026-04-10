@@ -6,14 +6,19 @@ import { Role, Employee } from '@prisma/client';
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
-  async getStats(organizationId: string, userId: string, role: Role) {
+  async getStats(organizationId: string) {
     const [
       totalEmployees,
       activeEmployees,
       onLeave,
       departments,
-      activeReviewCycles,
+      activeReviews,
       activeOkrPeriods,
+      totalOkrs,
+      completedOkrs,
+      totalPips,
+      activePips,
+      pendingLeaveRequests,
     ] = await Promise.all([
       this.prisma.employee.count({ where: { organizationId } }),
       this.prisma.employee.count({ where: { organizationId, status: 'ACTIVE' } }),
@@ -25,18 +30,38 @@ export class DashboardService {
       this.prisma.okrPeriod.count({
         where: { organizationId, status: 'ACTIVE' },
       }),
+      this.prisma.okr.count({ where: { organizationId } }),
+      this.prisma.okr.count({ where: { organizationId, status: 'DONE' } }),
+      this.prisma.pip.count({ where: { organizationId } }),
+      this.prisma.pip.count({ where: { organizationId, status: 'ACTIVE' } }),
+      this.prisma.leaveRequest.count({ where: { organizationId, status: 'PENDING' } }),
     ]);
 
-    const stats = {
+    return {
       totalEmployees,
       activeEmployees,
       onLeave,
       departments,
-      activeReviewCycles,
+      activeReviews,
       activeOkrPeriods,
+      totalOkrs,
+      completedOkrs,
+      totalPips,
+      activePips,
+      pendingLeaveRequests,
     };
+  }
 
-    return stats;
+  async getOrganization(organizationId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        id: true,
+        name: true,
+        industry: true,
+      },
+    });
+    return org;
   }
 
   async getDepartmentStats(organizationId: string) {
@@ -54,6 +79,28 @@ export class DashboardService {
       id: dept.id,
       name: dept.name,
       employeeCount: dept._count.employees,
+    }));
+  }
+
+  async getRecentOkrPeriods(organizationId: string) {
+    const periods = await this.prisma.okrPeriod.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      include: {
+        _count: {
+          select: { okrs: true },
+        },
+      },
+    });
+
+    return periods.map((period: any) => ({
+      id: period.id,
+      name: period.name,
+      status: period.status,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      okrCount: period._count.okrs,
     }));
   }
 

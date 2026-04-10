@@ -1,5 +1,5 @@
 [build]
-builder = "NESTJS"
+builder = "nixpacks"
 buildCommand = "npx prisma generate && npx prisma migrate deploy && npm run build"
 startCommand = "npm run start:prod"
 
